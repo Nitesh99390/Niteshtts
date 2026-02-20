@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nitesh Smart Reader Pro</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --neon: #00f2ff; --bg: #050810; --card: #101624; --accent: #7c3aed; --green: #22c55e; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: #e2e8f0; margin: 0; overflow-x: hidden; }
+        
+        #live-clock {
+            background: #000; color: var(--neon); padding: 12px;
+            font-family: 'Orbitron', sans-serif; font-size: 18px;
+            text-align: center; border-bottom: 2px solid var(--accent);
+            text-shadow: 0 0 10px var(--neon);
+        }
+
+        .ultra-container { max-width: 850px; margin: 15px auto; padding: 0 15px; }
+        
+        .ai-card {
+            background: var(--card); border: 1px solid #1e293b; padding: 20px;
+            border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+        }
+
+        textarea {
+            width: 100%; height: 380px; padding: 18px; border-radius: 16px;
+            background: #010409; color: #f0f6fc; border: 1px solid #30363d;
+            font-size: 19px; resize: none; box-sizing: border-box; line-height: 1.8;
+            outline: none; scroll-behavior: smooth;
+        }
+
+        .dashboard {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 10px; margin: 15px 0; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 15px;
+        }
+        .stat-box { text-align: center; border-right: 1px solid #30363d; }
+        .stat-box:last-child { border-right: none; }
+        .stat-box small { color: #8b949e; display: block; font-size: 10px; text-transform: uppercase; }
+        .stat-box span { color: var(--neon); font-weight: bold; font-size: 16px; font-family: 'Orbitron'; }
+
+        .settings-bar {
+            display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between;
+            align-items: center; margin-bottom: 15px; background: #161b22; padding: 10px 15px; border-radius: 12px;
+        }
+
+        select, input[type="range"] { background: #0d1117; color: white; border: 1px solid #30363d; padding: 8px; border-radius: 8px; }
+
+        .controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        
+        .btn {
+            padding: 12px; border-radius: 10px; border: none; font-weight: bold;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: 0.2s; color: white; font-size: 14px;
+        }
+
+        .btn-play { background: var(--accent); grid-column: span 2; font-size: 18px; }
+        .btn-skip { background: #21262d; border: 1px solid #30363d; }
+        .btn-save { background: var(--green); grid-column: span 2; }
+        .btn-reset { background: #991b1b; grid-column: span 2; }
+
+        .btn:hover { transform: translateY(-2px); filter: brightness(1.2); }
+        .btn:active { scale: 0.95; }
+
+        .app-guide { font-size: 12px; color: #8b949e; text-align: center; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div id="live-clock">00:00:00</div>
+
+<div class="ultra-container">
+    <div class="ai-card">
+        <textarea id="textInput" oninput="saveData()" placeholder="Novel paste karein... Ye apne aap save ho jayegi!"></textarea>
+
+        <div class="settings-bar">
+            <select id="voiceSelect" style="flex: 1;"></select>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <small>GATI</small>
+                <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1">
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <div class="stat-box"><small>Abhi</small><span id="wDisp">0</span></div>
+            <div class="stat-box"><small>Kul Shabd</small><span id="tDisp">0</span></div>
+            <div class="stat-box"><small>Samay</small><span id="timer">00:00</span></div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-skip" onclick="jump(-100)"><i class="fas fa-angle-double-left"></i> 100</button>
+            <button class="btn btn-skip" onclick="jump(-25)"><i class="fas fa-chevron-left"></i> 25</button>
+            <button class="btn btn-skip" onclick="jump(25)">25 <i class="fas fa-chevron-right"></i></button>
+            <button class="btn btn-skip" onclick="jump(100)">100 <i class="fas fa-angle-double-right"></i></button>
+            
+            <button id="playBtn" class="btn btn-play" onclick="toggle()">
+                <i class="fas fa-play" id="pIcon"></i> <span id="pText">START READING</span>
+            </button>
+
+            <button class="btn btn-save" onclick="downloadNovel()"><i class="fas fa-download"></i> DOWNLOAD FILE</button>
+            <button class="btn btn-reset" onclick="hardReset()"><i class="fas fa-trash-alt"></i> CLEAR EVERYTHING</button>
+        </div>
+        
+        <p class="app-guide">Novel auto-save hoti rehti hai. App banane ke liye browser menu mein "Add to Home Screen" dabayein.</p>
+    </div>
+</div>
+
+<script>
+    const speech = window.speechSynthesis;
+    const box = document.getElementById('textInput');
+    let reading = false, words = [], idx = 0, tSec = 0, tInt;
+
+    // VOICES SETUP
+    function loadVoices() {
+        const v = speech.getVoices().filter(x => x.lang.includes('hi') || x.lang.includes('en'));
+        document.getElementById('voiceSelect').innerHTML = v.map((x,i) => 
+            `<option value="${speech.getVoices().indexOf(x)}" ${x.lang.includes('hi-IN')?'selected':''}>${x.name}</option>`).join('');
+    }
+    speech.onvoiceschanged = loadVoices; loadVoices();
+
+    // AUTO-LOAD SYSTEM
+    window.onload = () => {
+        const savedText = localStorage.getItem('nitesh_content');
+        const savedIdx = localStorage.getItem('nitesh_idx');
+        if(savedText) {
+            box.value = savedText;
+            prepText();
+        }
+        if(savedIdx) {
+            idx = parseInt(savedIdx);
+            updateVisuals(idx);
+        }
+        setInterval(() => document.getElementById('live-clock').innerText = new Date().toLocaleTimeString(), 1000);
+    };
+
+    function prepText() {
+        words = box.value.trim().split(/\s+/).filter(w => w.length > 0);
+        document.getElementById('tDisp').innerText = words.length;
+    }
+
+    function saveData() {
+        localStorage.setItem('nitesh_content', box.value);
+        prepText();
+    }
+
+    box.onmouseup = () => {
+        if(!reading) {
+            const textBefore = box.value.substring(0, box.selectionStart);
+            idx = textBefore.split(/\s+/).filter(w=>w.length>0).length;
+            updateVisuals(idx);
+            localStorage.setItem('nitesh_idx', idx);
+        }
+    };
+
+    // CORE SMOOTH PLAYER
+    function toggle() {
+        if(reading) { pause(); } 
+        else { prepText(); if(words.length) { reading=true; startTimer(); speakLoop(); } }
+    }
+
+    function speakLoop() {
+        if(!reading || idx >= words.length) return (idx >= words.length && hardReset());
+        
+        // 20 words chunk for zero lag
+        const chunk = words.slice(idx, idx + 20).join(" ");
+        const ut = new SpeechSynthesisUtterance(chunk);
+        
+        ut.voice = speech.getVoices()[document.getElementById('voiceSelect').value];
+        ut.rate = document.getElementById('speed').value;
+
+        ut.onstart = () => {
+            updateVisuals(idx);
+            localStorage.setItem('nitesh_idx', idx);
+        };
+
+        ut.onend = () => { if(reading) { idx += 20; speakLoop(); } };
+
+        speech.cancel();
+        speech.speak(ut);
+        updateUI();
+    }
+
+    function updateVisuals(n) {
+        document.getElementById('wDisp').innerText = n;
+        const txt = box.value;
+        const arr = txt.split(/\s+/);
+        let s = 0;
+        for(let i=0; i<n; i++) s += (arr[i]?arr[i].length:0) + 1;
+        box.setSelectionRange(s, s + (arr[n]?arr[n].length:0));
+        
+        // Auto-scroll logic
+        const line = Math.floor(s / (box.clientWidth / 10));
+        box.scrollTop = (line * 28) - 150;
+    }
+
+    function pause() {
+        reading = false; speech.cancel(); clearInterval(tInt); updateUI();
+    }
+
+    function jump(n) {
+        idx = Math.max(0, Math.min(words.length - 1, idx + n));
+        updateVisuals(idx);
+        localStorage.setItem('nitesh_idx', idx);
+        if(reading) { speech.cancel(); speakLoop(); }
+    }
+
+    function downloadNovel() {
+        const blob = new Blob([box.value], {type: "text/plain"});
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "Nitesh_Novel_Backup.txt";
+        a.click();
+    }
+
+    function updateUI() {
+        const icon = document.getElementById('pIcon');
+        const txt = document.getElementById('pText');
+        icon.className = reading ? "fas fa-pause" : "fas fa-play";
+        txt.innerText = reading ? "PAUSE" : "RESUME";
+    }
+
+    function hardReset() {
+        if(!confirm("Kya aap sab kuch delete karna chahte hain?")) return;
+        pause(); idx = 0; tSec = 0;
+        localStorage.clear();
+        box.value = "";
+        document.getElementById('timer').innerText = "00:00";
+        document.getElementById('wDisp').innerText = "0";
+        document.getElementById('tDisp').innerText = "0";
+        updateUI();
+        document.getElementById('pText').innerText = "START READING";
+    }
+
+    function startTimer() {
+        clearInterval(tInt);
+        tInt = setInterval(() => {
+            tSec++;
+            const m = Math.floor(tSec/60).toString().padStart(2,'0');
+            const s = (tSec%60).toString().padStart(2,'0');
+            document.getElementById('timer').innerText = `${m}:${s}`;
+        }, 1000);
+    }
+</script>
+</body>
+</html>
